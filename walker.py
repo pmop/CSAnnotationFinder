@@ -11,8 +11,8 @@ from os import scandir, path
 from sys import argv
 from typing import TextIO
 
-_An_re = re.compile("\[[A-Z][A-z]+.+\]")
-_Class_re = re.compile(f"[\w ]+class (\w+)")
+_An_re = re.compile(f"\[[A-z]\w+(\(.+\))*]")
+_Class_re = re.compile(f"^[\w ]+class (\w+)")
 _Test_re = re.compile("test")
 _Min_annotations = 3
 _tests = "tests"
