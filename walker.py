@@ -4,15 +4,14 @@ General idea of this script is walk in all .cs files under directory and list th
 import json
 import re
 import tempfile
-import wget
 import sys
+import urllib.request
 from zipfile import ZipFile
 from os import scandir, path
 from sys import argv
-from typing import TextIO
 
-_An_re = re.compile(f"\[[A-z]\w+(\(.+\))*]")
-_Class_re = re.compile(f"^[\w ]+class (\w+)")
+_An_re = re.compile(f"\[[A-z]\w+(\(.+\))*\]")
+_Class_re = re.compile(f"^[\w ]+class ([A-Z]\w+)")
 _Test_re = re.compile("test")
 _Min_annotations = 3
 _tests = "tests"
@@ -29,14 +28,18 @@ def _get_class_name(file_path: str, encoding="utf8"):
                 if match:
                     return match.group(1)
     except:
-        print("Unexpected error", sys.exc_info()[0])
+        print(f"Retrying to open with encoding {encoding}")
         if encoding == "utf8":
             encoding = "iso-8859-1"
             try_again = True
         elif encoding == "iso-8859-1":
             encoding = "latin-1"
             try_again = True
+        elif encoding == "latin-1":
+            encoding = "cp1252"
+            try_again = True
         else:
+            print("Unexpected error", sys.exc_info()[0])
             raise IOError
     if try_again:
         _get_class_name(file_path, encoding)
@@ -58,8 +61,7 @@ def _find_best_matches(result: dict):
                           _tests: []}
             for t in test_folders:
                 for entry in scandir(t):
-                    if entry.is_file() and len(path.splitext(entry.name)) is 2 and path.splitext(entry.name)[
-                        1] == ".cs":
+                    if entry.is_file() and len(path.splitext(entry.name)) is 2 and path.splitext(entry.name)[1] == ".cs":
                         try:
                             with open(entry.path) as entry_file:
                                 for l in entry_file.readlines():
@@ -82,45 +84,51 @@ def _path_walker(where: str):
         _results: [],
         _best_matches: []
     }
-    try:
-        entries_gen = scandir(where)
-        entries = [x for x in entries_gen]
-        csfiles = filter(lambda x: x.is_file() and len(path.splitext(x.name)) is 2 and path.splitext(x.name)[1] == ".cs",
-                         entries)
-        dirs = filter(lambda x: x.is_dir() and not str(x.name).startswith("."), entries)
-        for f in csfiles:
-            with open(f, "r", errors="ignore") as _file:
-                matches = set()
-                for line in _file.readlines():
-                    match = _An_re.search(line)
-                    if match:
-                        matches.add(match.group(0))
+    entries_gen = scandir(where)
+    entries = [x for x in entries_gen]
+    csfiles = filter(
+        lambda x: x.is_file() and len(path.splitext(x.name)) is 2 and path.splitext(x.name)[1] == ".cs",
+        entries)
+    dirs = filter(lambda x: x.is_dir() and not str(x.name).startswith("."), entries)
+    for f in csfiles:
+        with open(f, "r", errors="ignore") as _file:
+            matches = set()
+            for line in _file.readlines():
+                match = _An_re.search(line)
+                if match:
+                    matches.add(match.group(0))
                 if len(matches) == _Min_annotations:
                     results[_results].append(f.path)
                     break
-
-        for dir in dirs:
-            if _Test_re.search(dir.path.lower()):
-                results[_tests].append(dir.path)
-            else:
+    for dir in dirs:
+        if _Test_re.search(dir.path.lower()):
+            results[_tests].append(dir.path)
+        else:
+            try:
                 r = _path_walker(dir)
                 results[_tests] += r[_tests]
                 results[_results] += r[_results]
-        return results
-    except (TypeError, FileNotFoundError, IOError) as error:
-        print (f"Unable to walk over {where}", error)
-    except:
-        print ("Unexpected error", sys.exc_info()[0])
-    finally:
-        return results
+            except:
+                print("Unexpected error.")
+    return results
+
+def _generic_test(name, expected, result):
+    if expected == result:
+        print(f"ok {name}")
+    else:
+        print(f"failed {name}", f" expected {str(expected)}; got {result}")
 
 def _test_get_class_name():
-    return _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs") == "IHaveAnnotations"
+    expected = _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs")
+    result = "IHaveAnnotations"
+    _generic_test("_test_get_class_name",expected, result)
 
-
+#Fixme
 def _test_path_walker():
     r = _path_walker(r"C:\Users\Pedro\PycharmProjects\annotationsfinder\ScriptT")
-    return "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0]
+    ok =  "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0]
+    print(f"{__name__} is {ok}")
+#    _generic_test("_test_path_walker",expected, result)
 
 
 def _test_find_best_matches():
@@ -142,26 +150,37 @@ def walk(directory, save_results_in=path.realpath(__file__), save_as="results.tx
     with open(save_at, "w", errors="ignore") as results_file:
         results_file.write(json.dumps(results, indent=4, sort_keys=True))
 
+def test():
+    _test_find_best_matches()
+    _test_get_class_name()
+    _test_path_walker()
 
-"""Script mode stuff"""
-args = [path.normpath(x) for x in argv[1:]]
-results_dir = tempfile.mkdtemp()
-print(f"Results will be saved at {results_dir}")
-with tempfile.TemporaryDirectory() as download_dir: # With clause so downloaded zip files are always deleted
-    for arg in args:
-        if path.isfile(arg):
-            with open(arg, "r") as arg_file:
-                for line in arg_file.readlines():
-                    file_name = path.normpath(wget.download(line.strip(), download_dir))
-                    try:
-                        with ZipFile(file_name) as zipfile:
-                            zipfile.extractall(path=download_dir)
-                        print("Walking " + file_name + " at " + file_name)
-                        walk(download_dir, save_results_in=results_dir, save_as=path.basename(file_name) + "_results.json")
-                    except (TypeError, FileNotFoundError, IOError) as err:
-                        print(f"Error: Could'nt walk {file_name}", err)
-                    except:
-                        print(f"Unexpected error: Could'nt walk {file_name}", sys.exc_info()[0])
+def main():
+    """Script mode stuff"""
+    args = [path.normpath(x) for x in argv[1:]]
+    results_dir = tempfile.mkdtemp()
+    print(f"Results will be saved at {results_dir}")
+    with tempfile.TemporaryDirectory() as download_dir:  # With clause so downloaded zip files are always deleted
+        for arg in args:
+            if path.isfile(arg):
+                with open(arg, "r") as arg_file:
+                    for line in arg_file.readlines():
+                        project = line.lstrip("https://github.com/").replace("/archive/master.zip","")
+                        print("Downloading " + project)
+                        file_name,_ = urllib.request.urlretrieve(line.strip(), path.normpath(download_dir + "/" + project.replace("/",".")))
+                        print("Finished downloading " + project + " to " + file_name)
+                        try:
+                            with ZipFile(file_name) as zipfile:
+                                zipfile.extractall(path=download_dir)
+                                print("Walking " + file_name + " at " + file_name)
+                                walk(download_dir, save_results_in=results_dir,
+                                     save_as=path.basename(file_name) + "_results.json")
+                        except (TypeError, FileNotFoundError, IOError) as err:
+                            print(f"Error: Could'nt walk {file_name}", err)
+                        except:
+                            print(f"Unexpected error: Could'nt walk {file_name}", sys.exc_info()[0])
 
-        else:
-            print(f"{arg} doesnt exists.")
+            else:
+                print(f"{arg} doesnt exists.")
+
+test()
