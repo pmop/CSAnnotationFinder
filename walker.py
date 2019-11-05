@@ -33,6 +33,9 @@ def _get_class_name(file_path: str, encoding="utf8"):
         if encoding == "utf8":
             encoding = "iso-8859-1"
             try_again = True
+        elif encoding == "iso-8859-1":
+            encoding = "latin-1"
+            try_again = True
         else:
             raise IOError
     if try_again:
@@ -129,13 +132,14 @@ def _test_find_best_matches():
 def walk(directory, save_results_in=path.realpath(__file__), save_as="results.txt", min_annotations=3,
          get_best_matches=True):
     global _Min_annotations
+    save_at = path.normpath(save_results_in + "/" + save_as)
     _Min_annotations = min_annotations
     results = _path_walker(path.normpath(directory))
     if get_best_matches:
         results = _find_best_matches(results)
     if len(results[_best_matches]) > 0:
-        print(save_results_in + " will have best matches.")
-    with open(path.normpath(save_results_in + "/" + save_as), "w", errors="ignore") as results_file:
+        print(save_at + " will have best matches.")
+    with open(save_at, "w", errors="ignore") as results_file:
         results_file.write(json.dumps(results, indent=4, sort_keys=True))
 
 
