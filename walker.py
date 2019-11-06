@@ -1,5 +1,5 @@
 """
-General idea of this script is walk in all .cs files under directory and list those that have more than x annotations
+General idea of this script is to walk over all .cs files under the project directory, and list those that have more than x annotations
 """
 import json
 import re
@@ -10,8 +10,8 @@ from zipfile import ZipFile
 from os import scandir, path
 from sys import argv
 
-_An_re = re.compile(f"\[[A-z]\w+(\(.+\))*\]")
-_Class_re = re.compile(f"^[\w ]+class ([A-Z]\w+)")
+_An_re = re.compile(r"\[[A-z]\w+(\(.+\))*\]")
+_Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
 _Min_annotations = 3
 _tests = "tests"
@@ -19,30 +19,23 @@ _results = "results"
 _best_matches = "best_matches"
 
 
-def _get_class_name(file_path: str, encoding="utf8"):
+def _get_class_name(file_path: str):
     try_again = False
+    lines = None
+    cname = ""
+    #I'm reading src code so it's safe to read it all at once
     try:
-        with open(file_path, "r") as class_file:
-            for line in class_file.readlines():
-                match = _Class_re.search(line)
-                if match:
-                    return match.group(1)
-    except:
-        print(f"Retrying to open with encoding {encoding}")
-        if encoding == "utf8":
-            encoding = "iso-8859-1"
-            try_again = True
-        elif encoding == "iso-8859-1":
-            encoding = "latin-1"
-            try_again = True
-        elif encoding == "latin-1":
-            encoding = "cp1252"
-            try_again = True
-        else:
-            print("Unexpected error", sys.exc_info()[0])
-            raise IOError
-    if try_again:
-        _get_class_name(file_path, encoding)
+        with open(file_path, "r", errors="replace") as file:
+            lines = file.readlines()
+    except (IOError, FileNotFoundError, UnicodeDecodeError) as err:
+        print("failure in _get_class_name ", err)
+    if lines:
+        for line in lines:
+            match = _Class_re.search(line)
+            if match:
+                print("match found")
+                cname = match.group(0)
+    return cname
 
 
 def _find_best_matches(result: dict):
@@ -112,27 +105,30 @@ def _path_walker(where: str):
                 print("Unexpected error.")
     return results
 
-def _generic_test(name, expected, result):
+def _generic_assert_equals(name, expected, result):
     if expected == result:
         print(f"ok {name}")
     else:
         print(f"failed {name}", f" expected {str(expected)}; got {result}")
 
 def _test_get_class_name():
-    expected = _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs")
-    result = "IHaveAnnotations"
-    _generic_test("_test_get_class_name",expected, result)
+    result = _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs")
+    expected = "IHaveAnnotations"
+    _generic_assert_equals("_test_get_class_name",expected, result)
 
 #Fixme
 def _test_path_walker():
-    r = _path_walker(r"C:\Users\Pedro\PycharmProjects\annotationsfinder\ScriptT")
+    r = _path_walker("ScriptT")
     ok =  "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0]
-    print(f"{__name__} is {ok}")
-#    _generic_test("_test_path_walker",expected, result)
+    if ok:
+        print("ok _test_path_walker")
+    else:
+        print(f"failed _test_path_walker expected  \"ImAtestFolder\" in r[_tests][0] and \"IHaveAnnotations\" in r[_results][0]",
+              f" got {r[_tests][0]} and {r[_results][0]}")
 
 
 def _test_find_best_matches():
-    r = _path_walker(r"C:\Users\Pedro\PycharmProjects\annotationsfinder\ScriptT")
+    r = _path_walker("ScriptT")
     w_best_matches = _find_best_matches(r)
     print(w_best_matches)
 
