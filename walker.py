@@ -12,7 +12,7 @@ import multiprocessing
 from os import scandir, path
 from sys import argv
 
-_An_re = re.compile(r"\[[A-Z]\w+(\(.+\))*\]")
+_An_re = re.compile(r"\[([A-Z]\w+).+\]")
 _Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
 _Url_Project_re = re.compile(r"(?<=.com\/)\w+\/\w+")
