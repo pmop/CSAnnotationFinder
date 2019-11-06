@@ -20,6 +20,7 @@ _Min_annotations = 3
 _tests = "tests"
 _results = "results"
 _best_matches = "best_matches"
+_annotations_matches = "annotations_matches"
 _download_dir = None
 _results_dir = None
 
@@ -28,7 +29,7 @@ def _get_class_name(file_path: str):
     try_again = False
     lines = None
     cname = ""
-    #I'm reading src code so it's safe to read it all at once
+    # I'm reading src code so it's safe to read it all at once
     try:
         with open(file_path, "r", errors="replace") as file:
             lines = file.readlines()
@@ -40,41 +41,49 @@ def _get_class_name(file_path: str):
         for line in lines:
             match = _Class_re.search(line)
             if match:
-                print("match found")
                 cname = match.group(0)
     return cname
 
 
-def _find_best_matches(result: dict):
-    test_folders = result[_tests]
-    files_w_annotations = result[_results]
+def _find_best_matches(result_dict: dict):
+    test_paths_list = result_dict[_tests]
+    results_list = result_dict[_results]  # list of dictionaries
     best_matches = []
-    for f in files_w_annotations:
-        class_name = None
+    for result in results_list:
+        cname = None
+        _path = result[_results]
         try:
-            class_name = _get_class_name(f)
+            cname = _get_class_name(_path)
         except IOError:
-            print("Unable to recover the classname for file: ", f)
-        if class_name is not None:
-            class_name_re = re.compile(f".+" + class_name + ".+")
-            best_match = {"class": class_name,
-                          _tests: []}
-            for t in test_folders:
-                for entry in scandir(t):
-                    if entry.is_file() and len(path.splitext(entry.name)) is 2 and path.splitext(entry.name)[1] == ".cs":
+            print("Unable to recover the classname for file: ", _path)
+        if cname is not None:
+            best_match = {
+                "class": cname,
+                "path": _path,
+                "annotations": result[_annotations_matches],
+                _tests: []
+            }
+            find_class_use_in_code = re.compile(f".+" + cname + ".+")
+            for test_path in test_paths_list:
+                for test_dir_entry in scandir(test_path):
+                    # depth 1 search
+                    if test_dir_entry.is_file() and (len(path.splitext(test_dir_entry.name)) is 2) and \
+                            (path.splitext(test_dir_entry.name)[1] == ".cs"):
                         try:
-                            with open(entry.path) as entry_file:
-                                for l in entry_file.readlines():
-                                    if class_name_re.search(l):
-                                        best_match[_tests].append(entry.path)
-                                        break
+                            with open(test_dir_entry.path) as test_file:
+                                for line in test_file.readlines():
+                                    if find_class_use_in_code.search(line):
+                                        best_match[_tests].append(test_dir_entry.path)
+                                        break  # proceed to search in the next test file
                         except:
-                            print(f"Unexpected error: unable to read {entry.path}. Reason:", sys.exc_info()[0])
+                            print(
+                                f"Unexpected error when trying to read the test file {test_dir_entry.result}. Reason:",
+                                sys.exc_info()[0])
             if len(best_match[_tests]) > 0:
                 best_matches.append(best_match)
     if len(best_matches) > 0:
-        result[_best_matches] += best_matches
-    return result
+        result_dict[_best_matches] += best_matches
+    return result_dict
 
 
 def _path_walker(where: str):
@@ -82,7 +91,7 @@ def _path_walker(where: str):
     results = {
         _tests: [],
         _results: [],
-        _best_matches: []
+        _best_matches: [],
     }
     entries_gen = scandir(where)
     entries = [x for x in entries_gen]
@@ -98,7 +107,11 @@ def _path_walker(where: str):
                 if match:
                     matches.add(match.group(0))
                 if len(matches) == _Min_annotations:
-                    results[_results].append(f.path)
+                    r = {
+                        _results: f.path,
+                        _annotations_matches: str(list(matches))
+                    }
+                    results[_results].append(r)
                     break
     for dir in dirs:
         if _Test_re.search(dir.path.lower()):
@@ -137,17 +150,18 @@ def _generic_assert_equals(name, expected, result):
 def _test_get_class_name():
     result = _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs")
     expected = "IHaveAnnotations"
-    _generic_assert_equals("_test_get_class_name",expected, result)
+    _generic_assert_equals("_test_get_class_name", expected, result)
 
 
 def _test_path_walker():
     r = _path_walker("ScriptT")
-    ok =  "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0]
+    ok = "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0][_results]
     if ok:
         print("ok _test_path_walker")
     else:
-        print(f"failed _test_path_walker expected  \"ImAtestFolder\" in r[_tests][0] and \"IHaveAnnotations\" in r[_results][0]",
-              f" got {r[_tests][0]} and {r[_results][0]}")
+        print(
+            f"failed _test_path_walker expected  \"ImAtestFolder\" in r[_tests][0] and \"IHaveAnnotations\" in r[_results][0]",
+            f" got {r[_tests][0]} and {r[_results][0][_results]}")
 
 
 def _test_find_best_matches():
@@ -174,7 +188,7 @@ def test():
     _test_url_regexes()
 
 
-def _download_and_walk(url :str):
+def _download_and_walk(url: str):
     global _download_dir
     global _results_dir
     download_dir = _download_dir
@@ -185,7 +199,7 @@ def _download_and_walk(url :str):
     project_name_zip = project_name + _Url_Archive_re.search(url).group(0)
     print(f"Downloading {project_name_zip} to {download_dir}")
     try:
-        file_name,_ = urllib.request.urlretrieve(url, path.normpath(download_dir+project_name_zip))
+        file_name, _ = urllib.request.urlretrieve(url, path.normpath(download_dir + project_name_zip))
         print(f"Finished downloading {url}")
     except:
         print(f"Unexpected error when trying to download {project_name}")
@@ -200,7 +214,7 @@ def _download_and_walk(url :str):
 
 
 def main():
-    #Script mode stuff
+    # Script mode stuff
     args = [path.normpath(x) for x in argv[1:]]
     results_dir = tempfile.mkdtemp()
     print(f"Results will be saved at {results_dir}")
@@ -214,5 +228,6 @@ def main():
                     # pool.map(_download_and_walk, urls)
             else:
                 print(f"{arg} doesnt exists.")
+
 
 test()
