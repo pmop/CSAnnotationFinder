@@ -14,8 +14,8 @@ from sys import argv
 _An_re = re.compile(r"\[[A-z]\w+(\(.+\))*\]")
 _Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
-_Url_Project_re = re.compile(r"(?<=archive\/)(\w+)")
-_Url_Archive_re = re.compile(r"(?<=archive\/)\w+\.zip")
+_Url_Project_re = re.compile(r"(?<=.com\/)\w+\/\w+")
+_Url_Archive_re = re.compile(r"\w+\.zip")
 _Min_annotations = 3
 _tests = "tests"
 _results = "results"
@@ -112,18 +112,34 @@ def _path_walker(where: str):
                 print("Unexpected error.")
     return results
 
+
+def walk(directory, save_results_in=path.realpath(__file__), save_as="results.txt", min_annotations=3,
+         get_best_matches=True):
+    global _Min_annotations
+    save_at = path.normpath(save_results_in + "/" + save_as)
+    _Min_annotations = min_annotations
+    results = _path_walker(path.normpath(directory))
+    if get_best_matches:
+        results = _find_best_matches(results)
+    if len(results[_best_matches]) > 0:
+        print(save_at + " will have best matches.")
+    with open(save_at, "w", errors="ignore") as results_file:
+        results_file.write(json.dumps(results, indent=4, sort_keys=True))
+
+
 def _generic_assert_equals(name, expected, result):
     if expected == result:
         print(f"ok {name}")
     else:
         print(f"failed {name}", f" expected {str(expected)}; got {result}")
 
+
 def _test_get_class_name():
     result = _get_class_name("ScriptT/ImASrcFolder/IHaveAnnotations.cs")
     expected = "IHaveAnnotations"
     _generic_assert_equals("_test_get_class_name",expected, result)
 
-#Fixme
+
 def _test_path_walker():
     r = _path_walker("ScriptT")
     ok =  "ImAtestFolder" in r[_tests][0] and "IHaveAnnotations" in r[_results][0]
@@ -140,47 +156,46 @@ def _test_find_best_matches():
     print(w_best_matches)
 
 
-def walk(directory, save_results_in=path.realpath(__file__), save_as="results.txt", min_annotations=3,
-         get_best_matches=True):
-    global _Min_annotations
-    save_at = path.normpath(save_results_in + "/" + save_as)
-    _Min_annotations = min_annotations
-    results = _path_walker(path.normpath(directory))
-    if get_best_matches:
-        results = _find_best_matches(results)
-    if len(results[_best_matches]) > 0:
-        print(save_at + " will have best matches.")
-    with open(save_at, "w", errors="ignore") as results_file:
-        results_file.write(json.dumps(results, indent=4, sort_keys=True))
+def _test_url_regexes():
+    url = "https://github.com/test/Test/master.zip"
+    prj = _Url_Project_re.search(url).group(0)
+    archive = _Url_Archive_re.search(url).group(0)
+    if prj == "test/Test" and archive == "master.zip":
+        print("ok _test_url_regexes")
+    else:
+        print("failure _test_url_regexes")
+        print(f"expected test/Test, got {prj}", f"expected master.zip, got {archive}")
+
 
 def test():
     _test_find_best_matches()
     _test_get_class_name()
     _test_path_walker()
+    _test_url_regexes()
 
 
 def _download_and_walk(url :str):
     global _download_dir
     global _results_dir
     download_dir = _download_dir
-    download_dir = results_dir = _results_dir
+    results_dir = _results_dir
+    url = url.strip()
     file_name = None
     project_name = _Url_Project_re.search(url).group(0).replace("/", ".")
     project_name_zip = project_name + _Url_Archive_re.search(url).group(0)
     print(f"Downloading {project_name_zip} to {download_dir}")
     try:
-        file_name,_ = urllib.request.urlretrieve(url, path.normpath(download_path+project_name_zip))
+        file_name,_ = urllib.request.urlretrieve(url, path.normpath(download_dir+project_name_zip))
         print(f"Finished downloading {url}")
-    except Error as err:
-        print(f"Unexpected error when trying to download {project_name}", err)
+    except:
+        print(f"Unexpected error when trying to download {project_name}")
     if file_name:
         print(f"Walking {project_name}")
         # Walk right ahead because in a concurrent model, walk needs download result and urlretrieve is blocking already
         try:
             walk(download_dir, save_results_in=results_dir, save_as=project_name + ".json")
-        except Error as err:
-            print(f"Unexpected error when walking {project_name}", err)
-
+        except:
+            print(f"Unexpected error when walking {project_name}")
         print(f"Finished walking {project_name}")
 
 
@@ -189,17 +204,15 @@ def main():
     args = [path.normpath(x) for x in argv[1:]]
     results_dir = tempfile.mkdtemp()
     print(f"Results will be saved at {results_dir}")
-    pool = multiprocessing.Pool()
+    # pool = multiprocessing.Pool()
     with tempfile.TemporaryDirectory() as download_dir:
-        _download_dir = download_dir
-        _results_dir = results_dir
         for arg in args:
             if path.isfile(arg):
                 with open(arg, "r") as arg_file:
                     urls = arg_file.readlines()
-                    pool.map(_download_and_walk, urls)
+                    _ = [_download_and_walk(url) for url in urls]
+                    # pool.map(_download_and_walk, urls)
             else:
                 print(f"{arg} doesnt exists.")
-        download_dir.cleanup()
 
-main()
+test()
