@@ -3,6 +3,7 @@ General idea of this script is to walk over all .cs files under the project dire
 """
 import json
 import re
+import os
 import tempfile
 import sys
 import urllib.request
@@ -130,6 +131,9 @@ def walk(directory, save_results_in=path.realpath(__file__), save_as="results.tx
          get_best_matches=True):
     global _Min_annotations
     save_at = path.normpath(save_results_in + "/" + save_as)
+    if path.isfile(save_at):
+        print(path.basename(directory) + " has been walked before. Ignoring.")
+        return
     _Min_annotations = min_annotations
     results = _path_walker(path.normpath(directory))
     if get_best_matches:
@@ -213,13 +217,21 @@ def _download_and_walk(url: str):
         print(f"Finished walking {project_name}")
 
 
+# Script mode stuff
 def main():
-    # Script mode stuff
+    global _results_dir
+    global _download_dir
     args = [path.normpath(x) for x in argv[1:]]
-    results_dir = tempfile.mkdtemp()
+    current_path = path.realpath(__file__)
+    results_dir = path.normpath(current_path + "/" + "results")
+    if not path.isdir(results_dir):
+        os.mkdir(results_dir)
+
     print(f"Results will be saved at {results_dir}")
     # pool = multiprocessing.Pool()
     with tempfile.TemporaryDirectory() as download_dir:
+        _results_dir = results_dir
+        _download_dir = download_dir
         for arg in args:
             if path.isfile(arg):
                 with open(arg, "r") as arg_file:
@@ -230,4 +242,4 @@ def main():
                 print(f"{arg} doesnt exists.")
 
 
-test()
+main()
