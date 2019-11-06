@@ -164,28 +164,33 @@ def _download_and_walk(url :str):
     global _results_dir
     download_dir = _download_dir
     download_dir = results_dir = _results_dir
+    file_name = None
     project_name = _Url_Project_re.search(url).group(0).replace("/", ".")
     project_name_zip = project_name + _Url_Archive_re.search(url).group(0)
     print(f"Downloading {project_name_zip} to {download_dir}")
-    file_name,_ = urllib.request.urlretrieve(url, path.normpath(download_path+project_name_zip))
-    print(f"Finished downloading {url}")
-    print(f"Walking {project_name}")
-    # Walk right ahead because in a concurrent model, walk needs download result and urlretrieve is blocking already
     try:
-        walk(download_dir, save_results_in=results_dir, save_as=project_name + ".json")
+        file_name,_ = urllib.request.urlretrieve(url, path.normpath(download_path+project_name_zip))
+        print(f"Finished downloading {url}")
     except Error as err:
-        print(f"Unexpected error when walking {project_name}", err)
+        print(f"Unexpected error when trying to download {project_name}", err)
+    if file_name:
+        print(f"Walking {project_name}")
+        # Walk right ahead because in a concurrent model, walk needs download result and urlretrieve is blocking already
+        try:
+            walk(download_dir, save_results_in=results_dir, save_as=project_name + ".json")
+        except Error as err:
+            print(f"Unexpected error when walking {project_name}", err)
 
-    print(f"Finished walking {project_name}")
+        print(f"Finished walking {project_name}")
 
 
 def main():
-    """Script mode stuff"""
+    #Script mode stuff
     args = [path.normpath(x) for x in argv[1:]]
     results_dir = tempfile.mkdtemp()
     print(f"Results will be saved at {results_dir}")
     pool = multiprocessing.Pool()
-    with tempfile.TemporaryDirectory() as download_dir:  # With clause so downloaded zip files are always deleted
+    with tempfile.TemporaryDirectory() as download_dir:
         _download_dir = download_dir
         _results_dir = results_dir
         for arg in args:
