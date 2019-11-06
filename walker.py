@@ -103,6 +103,8 @@ def _path_walker(where: str):
         with open(f, "r", errors="ignore") as _file:
             matches = set()
             for line in _file.readlines():
+                if line.strip().startswith("//"):
+                    break
                 match = _An_re.search(line)
                 if match:
                     matches.add(match.group(0))
