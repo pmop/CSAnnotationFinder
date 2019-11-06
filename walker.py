@@ -7,12 +7,12 @@ import os
 import tempfile
 import sys
 import urllib.request
+import zipfile
 import multiprocessing
-from zipfile import ZipFile
 from os import scandir, path
 from sys import argv
 
-_An_re = re.compile(r"\[[A-z]\w+(\(.+\))*\]")
+_An_re = re.compile(r"\[[A-Z]\w+(\(.+\))*\]")
 _Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
 _Url_Project_re = re.compile(r"(?<=.com\/)\w+\/\w+")
@@ -22,7 +22,6 @@ _tests = "tests"
 _results = "results"
 _best_matches = "best_matches"
 _annotations_matches = "annotations_matches"
-_download_dir = None
 _results_dir = None
 
 
@@ -132,7 +131,7 @@ def walk(directory, save_results_in=path.realpath(__file__), save_as="results.tx
     global _Min_annotations
     save_at = path.normpath(save_results_in + "/" + save_as)
     if path.isfile(save_at):
-        print(path.basename(directory) + " has been walked before. Ignoring.")
+        print(save_at + " has been walked before. Ignoring.")
         return
     _Min_annotations = min_annotations
     results = _path_walker(path.normpath(directory))
@@ -193,53 +192,51 @@ def test():
 
 
 def _download_and_walk(url: str):
-    global _download_dir
     global _results_dir
-    download_dir = _download_dir
     results_dir = _results_dir
     url = url.strip()
     file_name = None
     project_name = _Url_Project_re.search(url).group(0).replace("/", ".")
     project_name_zip = project_name + _Url_Archive_re.search(url).group(0)
-    print(f"Downloading {project_name_zip} to {download_dir}")
-    try:
-        file_name, _ = urllib.request.urlretrieve(url, path.normpath(download_dir + project_name_zip))
-        print(f"Finished downloading {url}")
-    except:
-        print(f"Unexpected error when trying to download {project_name}")
-    if file_name:
-        print(f"Walking {project_name}")
-        # Walk right ahead because in a concurrent model, walk needs download result and urlretrieve is blocking already
+    with tempfile.TemporaryDirectory() as download_dir:
+        print(f"Downloading {project_name_zip} to {download_dir}")
         try:
-            walk(download_dir, save_results_in=results_dir, save_as=project_name + ".json")
+            file_name, _ = urllib.request.urlretrieve(url, path.normpath(download_dir + project_name_zip))
+            print(f"Finished downloading {url}")
         except:
-            print(f"Unexpected error when walking {project_name}")
-        print(f"Finished walking {project_name}")
+            print(f"Unexpected error when trying to download {project_name}")
+        if file_name:
+            print(f"Walking {project_name}")
+    # Walk right ahead because in a concurrent model, walk needs download result and urlretrieve is blocking already
+            try:
+                with zipfile.ZipFile(file_name, "r") as zip_ref:
+                    zip_ref.extractall(path=download_dir)
+                    walk(download_dir, save_results_in=results_dir, save_as=project_name + ".json")
+            except:
+                print(f"Unexpected error when walking {project_name}")
+            print(f"Finished walking {project_name}")
 
 
 # Script mode stuff
 def main():
     global _results_dir
-    global _download_dir
     args = [path.normpath(x) for x in argv[1:]]
-    current_path = path.realpath(__file__)
+    current_path = path.dirname(path.realpath(__file__))
     results_dir = path.normpath(current_path + "/" + "results")
     if not path.isdir(results_dir):
         os.mkdir(results_dir)
 
     print(f"Results will be saved at {results_dir}")
     # pool = multiprocessing.Pool()
-    with tempfile.TemporaryDirectory() as download_dir:
-        _results_dir = results_dir
-        _download_dir = download_dir
-        for arg in args:
-            if path.isfile(arg):
-                with open(arg, "r") as arg_file:
-                    urls = arg_file.readlines()
-                    _ = [_download_and_walk(url) for url in urls]
-                    # pool.map(_download_and_walk, urls)
-            else:
-                print(f"{arg} doesnt exists.")
+    _results_dir = results_dir
+    for arg in args:
+        if path.isfile(arg):
+            with open(arg, "r") as arg_file:
+                urls = arg_file.readlines()
+                _ = [_download_and_walk(url) for url in urls]
+                # pool.map(_download_and_walk, urls)
+        else:
+            print(f"{arg} doesnt exists.")
 
 
 main()
