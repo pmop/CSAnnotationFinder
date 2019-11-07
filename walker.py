@@ -15,8 +15,8 @@ from sys import argv
 _An_re = re.compile(r"\[[A-Z]\w+(\(.+\))*\]")
 _Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
-_Url_Project_re = re.compile(r"(?<=.com\/)\w+\/\w+")
-_Url_Archive_re = re.compile(r"\w+\.zip")
+_Url_Project_re = re.compile(r"(?<=\.com\/)[^\/]+\/[^\/]+")
+_Url_Archive_re = re.compile(r"[^\/]+\.zip")
 _Min_annotations = 3
 _tests = "tests"
 _results = "results"
