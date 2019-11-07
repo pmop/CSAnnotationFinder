@@ -12,7 +12,7 @@ import multiprocessing
 from os import scandir, path
 from sys import argv
 
-_An_re = re.compile(r"\[[A-Z]\w+(\(.+\))*\]")
+_An_re = re.compile(r"\[([A-Z]\w+)(\(.+\))*\]")
 _Class_re = re.compile(r"(?<=class )[A-Z]\w+")
 _Test_re = re.compile("test")
 _Url_Project_re = re.compile(r"(?<=\.com\/)[^\/]+\/[^\/]+")
@@ -67,7 +67,7 @@ def _find_best_matches(result_dict: dict):
             for test_path in test_paths_list:
                 for test_dir_entry in scandir(test_path):
                     # depth 1 search
-                    if test_dir_entry.is_file() and (len(path.splitext(test_dir_entry.name)) is 2) and \
+                    if test_dir_entry.is_file() and (len(path.splitext(test_dir_entry.name)) == 2) and \
                             (path.splitext(test_dir_entry.name)[1] == ".cs"):
                         try:
                             with open(test_dir_entry.path) as test_file:
@@ -96,7 +96,7 @@ def _path_walker(where: str):
     entries_gen = scandir(where)
     entries = [x for x in entries_gen]
     csfiles = filter(
-        lambda x: x.is_file() and len(path.splitext(x.name)) is 2 and path.splitext(x.name)[1] == ".cs",
+        lambda x: x.is_file() and (len(path.splitext(x.name)) == 2) and path.splitext(x.name)[1] == ".cs",
         entries)
     dirs = filter(lambda x: x.is_dir() and not str(x.name).startswith("."), entries)
     for f in csfiles:
@@ -107,7 +107,7 @@ def _path_walker(where: str):
                     break
                 match = _An_re.search(line)
                 if match:
-                    matches.add(match.group(0))
+                    matches.add(match.group(1))
                 if len(matches) == _Min_annotations:
                     r = {
                         _results: f.path,
